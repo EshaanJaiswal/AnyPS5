@@ -175,6 +175,18 @@ def main():
                                      {relative: declared_provider(22, ('libGuest',))})
             success(result, output, relative, windows)
 
+        for magic in (b'\x4f\x15\x3d\x1d', b'\x54\x14\xf5\xee'):
+            for windows in (True, False):
+                result, output = convert(f'self-eboot-beside-{magic.hex()}-{windows}', windows, 'libGuest.prx',
+                                         {'eboot.bin': magic + bytes(0x1000),
+                                          'sce_module/libGuest.prx': declared_provider(22, ('libGuest',))})
+                success(result, output, 'sce_module/libGuest.prx', windows)
+
+                result, output = convert(f'self-prx-subfolder-{magic.hex()}-{windows}', windows, 'libGuest.prx',
+                                         {'prx/shipping/libGuest.prx': magic + bytes(0x1000)})
+                assert result.returncode == 2 and 'Guest module is a SELF container, not an ELF' in result.stderr, result.stderr
+
+
         bench_case = work / 'benchmark'
         bench_case.mkdir(parents=True)
         (bench_case / 'sce_module').mkdir()

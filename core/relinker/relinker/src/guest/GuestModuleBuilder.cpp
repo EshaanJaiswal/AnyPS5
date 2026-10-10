@@ -65,7 +65,7 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
     std::vector<std::filesystem::path> paths;
     std::set<std::string> unmatchedExclusions = excludedModules;
     std::map<std::filesystem::path, bool> elfCache;
-    const auto isElf = [&](const std::filesystem::path& path) {
+    const auto isElf = [&](const std::filesystem::path& path, const bool isCandidate = true) {
         if (const auto it = elfCache.find(path); it != elfCache.end()) return it->second;
         std::ifstream stream(path, std::ios::binary);
         if (!stream) throw Domain::RelinkerException("Cannot read guest candidate: " + path.string());
@@ -78,7 +78,11 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         }
         const auto byte = [&](const std::size_t index) { return static_cast<unsigned char>(magic[index]); };
         const bool self = (byte(0) == 0x4f && byte(1) == 0x15 && byte(2) == 0x3d && byte(3) == 0x1d) || (byte(0) == 0x54 && byte(1) == 0x14 && byte(2) == 0xf5 && byte(3) == 0xee);
-        if (self) throw Domain::RelinkerException("Guest module is a SELF container, not an ELF: " + path.string());
+        if (self) {
+            if (isCandidate) throw Domain::RelinkerException("Guest module is a SELF container, not an ELF: " + path.string());
+            elfCache.emplace(path, false);
+            return false;
+        }
         const bool elf = byte(0) == 0x7f && magic[1] == 'E' && magic[2] == 'L' && magic[3] == 'F';
         elfCache.emplace(path, elf);
         return elf;
@@ -123,14 +127,19 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
                 }
                 continue;
             }
-            const bool elf = isElf(it->path());
-            if (elf) prxCandidates.push_back(it->path());
+            const auto extension = it->path().extension().string();
+            const bool isPrx = extension == ".prx" || extension == ".sprx" || extension == ".suprx" ||
+                name.ends_with(".debug_prx") ||
+                (windows && (FoldFilename(extension) == ".prx" || FoldFilename(extension) == ".sprx" || FoldFilename(extension) == ".suprx"));
             const auto stem = ModuleStem(name, windows);
             std::vector<std::string> stemMatches;
             if (!stem.empty()) {
                 for (const auto& needed : missingNeeded) if (needed != name && ModuleStem(needed, windows) == stem) stemMatches.push_back(needed);
             }
-            if ((!missingNeeded.contains(name) && stemMatches.empty()) || !elf) continue;
+            const bool isNeededMatch = missingNeeded.contains(name) || !stemMatches.empty();
+            const bool elf = isElf(it->path(), isPrx || isNeededMatch);
+            if (elf) prxCandidates.push_back(it->path());
+            if (!isNeededMatch || !elf) continue;
             if (missingNeeded.contains(name)) record(found, name, it->path());
             for (const auto& needed : stemMatches) record(foundByStem, needed, it->path());
         }
