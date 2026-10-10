@@ -186,6 +186,13 @@ def main():
                                          {'prx/shipping/libGuest.prx': magic + bytes(0x1000)})
                 assert result.returncode == 2 and 'Guest module is a SELF container, not an ELF' in result.stderr, result.stderr
 
+        for windows in (True, False):
+            result, output = convert(f'input-executable-not-guest-{windows}', windows, 'input.prx',
+                                     {'sce_module/libGuest.prx': declared_provider(22, ('libGuest',))})
+            assert result.returncode == 0, result.stderr
+            artifacts = list((output.parent / 'app0').rglob('*.guest.prx'))
+            assert artifacts == [output.parent / 'app0/sce_module/libGuest.prx.guest.prx'], artifacts
+
 
         bench_case = work / 'benchmark'
         bench_case.mkdir(parents=True)

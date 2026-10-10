@@ -117,8 +117,11 @@ std::vector<GuestArtifact> GuestModuleBuilder::Build(const std::filesystem::path
         const auto record = [](std::map<std::string, std::filesystem::path>& matches, const std::string& name, const std::filesystem::path& path) {
             if (!matches.emplace(name, path).second) throw Domain::RelinkerException("Ambiguous needed module: " + matches.at(name).string() + " and " + path.string());
         };
+        const auto absInput = std::filesystem::absolute(inputPath);
+        const auto absOutput = outputPath.empty() ? std::filesystem::path{} : std::filesystem::absolute(outputPath);
         for (auto it = std::filesystem::recursive_directory_iterator(root); it != std::filesystem::recursive_directory_iterator(); ++it) {
             if (!it->is_regular_file()) continue;
+            if (it->path() == absInput || (!absOutput.empty() && it->path() == absOutput)) continue;
             const auto name = it->path().filename().string();
             if (name.ends_with(GuestModuleSuffix)) continue;
             if (excludedModules.contains(name)) {
